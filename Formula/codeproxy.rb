@@ -4,10 +4,10 @@ class Codeproxy < Formula
   # Prebuilt universal macOS binary. The source repository is private and
   # Homebrew fetches anonymously, so the formula installs a compiled artifact
   # published to this public tap rather than building from source.
-  url "https://github.com/miguelriotinto/homebrew-codeproxy/releases/download/v0.2.0/codeproxy-0.2.0.tar.gz"
-  # Homebrew infers the version from the `v0.2.0` segment of the URL, so an
+  url "https://github.com/miguelriotinto/homebrew-codeproxy/releases/download/v0.2.1/codeproxy-0.2.1.tar.gz"
+  # Homebrew infers the version from the `v0.2.1` segment of the URL, so an
   # explicit `version` would only be a second place for it to go stale.
-  sha256 "e0d624ef79aa8d19ca6388f8964376b41a173236db1d7aaac77752b3fba8982a"
+  sha256 "3177356c15accc203cda1b58f0a7189214bf1449c8fe455c820e80aa242cbed7"
   license "MIT"
 
   depends_on :macos
@@ -24,7 +24,13 @@ class Codeproxy < Formula
   service do
     run [opt_bin/"codeproxy-launch"]
     keep_alive successful_exit: false
-    log_path var/"log/codeproxy.log"
+    # CodeProxy writes its own daily-rotated codeproxy.log in this directory and
+    # prunes old files itself. Deliberately NOT log_path: that makes launchd hold
+    # an open fd to the file, and anything that renames it (newsyslog, a manual
+    # mv) leaves the daemon writing to an unlinked inode while the visible log
+    # stays empty. error_log_path is still launchd's, because a process that dies
+    # before configuring its logger can only report through stderr.
+    environment_variables CODEPROXY_LOG_DIR: var/"log/codeproxy"
     error_log_path var/"log/codeproxy.err.log"
   end
 
@@ -88,5 +94,30 @@ class Codeproxy < Formula
     )
     refute_match "not found", output
     assert_match "does not look like a Bedrock API key", output
+
+    # A rotation setting that silently fell back to unbounded growth would look
+    # exactly like a working one until the disk filled, so assert the binary
+    # reports the directory and retention it will actually use.
+    (testpath/"cfg2/codeproxy").mkpath
+    env2 = testpath/"cfg2/codeproxy/env"
+    env2.write "CODEPROXY_BEDROCK_KEY=ABSKfake\n" \
+               "CODEPROXY_TOKEN_SHA256=#{"0" * 64}\n" \
+               "CODEPROXY_LOG_DIR=#{testpath}/logs\n" \
+               "CODEPROXY_LOG_KEEP_DAYS=3\n"
+    env2.chmod 0600
+    output = shell_output(
+      "env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=#{testpath} " \
+      "XDG_CONFIG_HOME=#{testpath}/cfg2 #{bin}/codeproxy env",
+    )
+    assert_match "#{testpath}/logs (keep 3 days)", output
+
+    # And that a retention of 0 is rejected: it would mean "keep no files at all",
+    # deleting the log this feature exists to preserve.
+    env2.write env2.read.sub("KEEP_DAYS=3", "KEEP_DAYS=0")
+    output = shell_output(
+      "env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=#{testpath} " \
+      "XDG_CONFIG_HOME=#{testpath}/cfg2 #{bin}/codeproxy env 2>&1", 1
+    )
+    assert_match "must be at least 1", output
   end
 end
