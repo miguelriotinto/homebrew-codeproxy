@@ -7,7 +7,7 @@ class Codeproxy < Formula
   url "https://github.com/miguelriotinto/homebrew-codeproxy/releases/download/v0.2.1/codeproxy-0.2.1.tar.gz"
   # Homebrew infers the version from the `v0.2.1` segment of the URL, so an
   # explicit `version` would only be a second place for it to go stale.
-  sha256 "3177356c15accc203cda1b58f0a7189214bf1449c8fe455c820e80aa242cbed7"
+  sha256 "8cbd8cf34184bc40d3cf9189111fae3e7004afb670c06dcfb688a6be6b4e3ba3"
   license "MIT"
 
   depends_on :macos
@@ -98,26 +98,21 @@ class Codeproxy < Formula
     # A rotation setting that silently fell back to unbounded growth would look
     # exactly like a working one until the disk filled, so assert the binary
     # reports the directory and retention it will actually use.
-    (testpath/"cfg2/codeproxy").mkpath
-    env2 = testpath/"cfg2/codeproxy/env"
-    env2.write "CODEPROXY_BEDROCK_KEY=ABSKfake\n" \
-               "CODEPROXY_TOKEN_SHA256=#{"0" * 64}\n" \
-               "CODEPROXY_LOG_DIR=#{testpath}/logs\n" \
-               "CODEPROXY_LOG_KEEP_DAYS=3\n"
-    env2.chmod 0600
-    output = shell_output(
-      "env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=#{testpath} " \
-      "XDG_CONFIG_HOME=#{testpath}/cfg2 #{bin}/codeproxy env",
-    )
+    #
+    # Passed as environment variables rather than through an env file, because it
+    # is the binary being tested here and the binary never reads that file — only
+    # codeproxy-launch does, and it always execs `serve`, so it cannot deliver
+    # anything to `codeproxy env`. The file-sourcing chain is already covered by
+    # the wrapper assertion above.
+    rotation_env = "CODEPROXY_BEDROCK_KEY=ABSKfake " \
+                   "CODEPROXY_TOKEN_SHA256=#{"0" * 64} " \
+                   "CODEPROXY_LOG_DIR=#{testpath}/logs"
+    output = shell_output("#{rotation_env} CODEPROXY_LOG_KEEP_DAYS=3 #{bin}/codeproxy env")
     assert_match "#{testpath}/logs (keep 3 days)", output
 
     # And that a retention of 0 is rejected: it would mean "keep no files at all",
     # deleting the log this feature exists to preserve.
-    env2.write env2.read.sub("KEEP_DAYS=3", "KEEP_DAYS=0")
-    output = shell_output(
-      "env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=#{testpath} " \
-      "XDG_CONFIG_HOME=#{testpath}/cfg2 #{bin}/codeproxy env 2>&1", 1
-    )
+    output = shell_output("#{rotation_env} CODEPROXY_LOG_KEEP_DAYS=0 #{bin}/codeproxy env 2>&1", 1)
     assert_match "must be at least 1", output
   end
 end
