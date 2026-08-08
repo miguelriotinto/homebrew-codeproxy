@@ -4,10 +4,10 @@ class Codeproxy < Formula
   # Prebuilt universal macOS binary. The source repository is private and
   # Homebrew fetches anonymously, so the formula installs a compiled artifact
   # published to this public tap rather than building from source.
-  url "https://github.com/miguelriotinto/homebrew-codeproxy/releases/download/v0.2.1/codeproxy-0.2.1.tar.gz"
-  # Homebrew infers the version from the `v0.2.1` segment of the URL, so an
+  url "https://github.com/miguelriotinto/homebrew-codeproxy/releases/download/v0.2.2/codeproxy-0.2.2.tar.gz"
+  # Homebrew infers the version from the `v0.2.2` segment of the URL, so an
   # explicit `version` would only be a second place for it to go stale.
-  sha256 "8cbd8cf34184bc40d3cf9189111fae3e7004afb670c06dcfb688a6be6b4e3ba3"
+  sha256 "66b82b8d864eac540e6090be6ab609aa5cf93cdea8316c659f38746848093416"
   license "MIT"
 
   depends_on :macos
