@@ -4,10 +4,10 @@ class Codeproxy < Formula
   # Prebuilt universal macOS binary. The source repository is private and
   # Homebrew fetches anonymously, so the formula installs a compiled artifact
   # published to this public tap rather than building from source.
-  url "https://github.com/miguelriotinto/homebrew-codeproxy/releases/download/v0.2.2/codeproxy-0.2.2.tar.gz"
-  # Homebrew infers the version from the `v0.2.2` segment of the URL, so an
+  url "https://github.com/miguelriotinto/homebrew-codeproxy/releases/download/v0.3.0/codeproxy-0.3.0.tar.gz"
+  # Homebrew infers the version from the `v0.3.0` segment of the URL, so an
   # explicit `version` would only be a second place for it to go stale.
-  sha256 "66b82b8d864eac540e6090be6ab609aa5cf93cdea8316c659f38746848093416"
+  sha256 "b9ae5b449590ac29115ce17b7fce8a5da12476d690f64ec1b57662cb14533647"
   license "MIT"
 
   depends_on :macos
@@ -19,6 +19,11 @@ class Codeproxy < Formula
     # and execs the binary, keeping the credential out of the world-readable
     # launchd plist.
     bin.install "codeproxy-launch"
+    # A reference price table, not an active one: `codeproxy cost` reads
+    # ~/.config/codeproxy/prices.toml, so installing here cannot silently change
+    # a reported figure on upgrade. The caveats tell the operator to copy it,
+    # which makes adopting new rates a deliberate act.
+    pkgshare.install "prices.toml"
   end
 
   service do
@@ -38,7 +43,7 @@ class Codeproxy < Formula
     <<~EOS
       CodeProxy needs a configuration file before it will start:
 
-        codeproxy init                    # prints a token and the lines to add
+        codeproxy init --label this-mac   # prints a token and the lines to add
         mkdir -p ~/.config/codeproxy && chmod 700 ~/.config/codeproxy
         # create ~/.config/codeproxy/env with the printed values, then:
         chmod 600 ~/.config/codeproxy/env
@@ -47,6 +52,16 @@ class Codeproxy < Formula
       Then start it:
 
         brew services start codeproxy
+
+      To see spend per token, install the price table and check the rates are
+      current — they are AWS's, and they change on AWS's schedule:
+
+        cp #{pkgshare}/prices.toml ~/.config/codeproxy/prices.toml
+        codeproxy cost
+
+      Give each machine its own token (`codeproxy init --label other-mac`,
+      appending the pair to CODEPROXY_TOKENS). A shared token means `codeproxy
+      cost` cannot tell the machines apart.
 
       Configure Claude Code. Use the literal IP, not localhost: localhost
       resolves to both ::1 and 127.0.0.1 and which wins is resolver-dependent,
@@ -59,9 +74,11 @@ class Codeproxy < Formula
   end
 
   test do
-    output = shell_output("#{bin}/codeproxy init")
+    output = shell_output("#{bin}/codeproxy init --label laptop-air")
     assert_match "cp_live_", output
-    assert_match "CODEPROXY_TOKEN_SHA256=", output
+    # The label must reach the config line: it is the key `codeproxy cost`
+    # attributes spend to, so a dropped label silently merges two clients' bills.
+    assert_match "CODEPROXY_TOKENS=laptop-air:", output
 
     # Must fail fast without configuration: under launchd's keep_alive, a
     # process that starts broken becomes a silent restart loop.
